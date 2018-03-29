@@ -14,7 +14,7 @@ ACTIONS = {
 
 FILE_LIST_DIRECTORY = 0x0001
 
-path_to_watch = 'D:/work/file_moniter/test/'
+path_to_watch = 'D:/work/file_monitor/test/'
 print('Watching changes in', path_to_watch)
 hDir = win32file.CreateFile(
   path_to_watch,

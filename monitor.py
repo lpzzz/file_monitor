@@ -1,15 +1,17 @@
+from threading import Thread
+from queue import Queue, Empty
 import os
 import sys
 import time
 import json
-from threading import Thread
-from queue import Queue
 
 import win32file
 import win32con
 
+def action_log(time_str: str, act_str: str, filename: str):
+    return None
 
-def monitor(interv: int, path_to_watch: str):
+def monitor(interv: int, path_to_watch: str, in_q: Queue):
     ACTIONS = {
     1: "+", # create
     2: "-", # delete
@@ -29,8 +31,9 @@ def monitor(interv: int, path_to_watch: str):
     win32con.FILE_FLAG_BACKUP_SEMANTICS,
     None
     )
-    while 1:
-        time.sleep(interv)
+    flag = True
+    while flag:
+
         results = win32file.ReadDirectoryChangesW(
             hDir,
             1024,
@@ -45,9 +48,13 @@ def monitor(interv: int, path_to_watch: str):
             None)
         for action, filename in results:
             time_str = time.strftime('%Y%m%d%H%M')
-            print(f'{time_str} {ACTIONS.get(action, "?")} {filename}')
+            act_str = ACTIONS.get(action, "?")
+            print(f'{time_str} {act_str} {filename}')
+            action_log(time_str, act_str, filename)
             # full_filename = os.path.join(path_to_watch, filename)
             # print(full_filename, ACTIONS.get(action, "Unknown"))
+
+    return None
 
 
 def controler():
@@ -57,8 +64,14 @@ def controler():
         setting = json.load(f)
         interv = setting.get('interval', 1)
         path_to_watch = setting.get('path', _path)
-    monitor(interv, path_to_watch)
-
+    q = Queue() # currently no use
+    t_moni = Thread(target=monitor, args=(interv, path_to_watch, q))
+    t_moni.daemon = True
+    t_moni.start()
+    _in = ''
+    while _in != 'exit':
+        _in = input()
+    return None
 
 
 if __name__ == '__main__':
