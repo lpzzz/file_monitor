@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 from threading import Thread
 from queue import Queue
 
@@ -8,7 +9,7 @@ import win32file
 import win32con
 
 
-def moniter():
+def monitor(interv: int, path_to_watch: str):
     ACTIONS = {
     1: "+", # create
     2: "-", # delete
@@ -18,8 +19,6 @@ def moniter():
     }
 
     FILE_LIST_DIRECTORY = 0x0001
-
-    path_to_watch = 'D:/work/file_moniter/test/'
     print('Watching changes in', path_to_watch)
     hDir = win32file.CreateFile(
     path_to_watch,
@@ -31,7 +30,7 @@ def moniter():
     None
     )
     while 1:
-        time.sleep(1)
+        time.sleep(interv)
         results = win32file.ReadDirectoryChangesW(
             hDir,
             1024,
@@ -50,5 +49,17 @@ def moniter():
             # full_filename = os.path.join(path_to_watch, filename)
             # print(full_filename, ACTIONS.get(action, "Unknown"))
 
+
+def controler():
+    _path = os.getcwd()
+    interv, path_to_watch = 1, _path
+    with open(_path + '/setting.json') as f:
+        setting = json.load(f)
+        interv = setting.get('interval', 1)
+        path_to_watch = setting.get('path', _path)
+    monitor(interv, path_to_watch)
+
+
+
 if __name__ == '__main__':
-    moniter()
+    controler()
