@@ -1,4 +1,5 @@
 {
-	"interval": 1,
-	"path": "D:/work/file_moniter/test"
+	"interval": 0,
+	"path": "D:/work/file_moniter/test",
+	"encoding": "utf-8"
 }
