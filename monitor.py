@@ -17,7 +17,7 @@ class MoniFrame(wx.Frame):
 
     def __init__(self, parent, title, ecd):
         wx.Frame.__init__(self, parent, title=title, size=(300, 200))
-        self.textctrl = wx.TextCtrl(self, id=-1, value="", style=wx.TE_READONLY | wx.TE_MULTILINE,)
+        self.textctrl = wx.TextCtrl(self, id=-1, value='', style=wx.TE_READONLY | wx.TE_MULTILINE,)
         self.textctrl.SetFont(wx.Font(10, wx.MODERN, wx.NORMAL, wx.NORMAL, False, u'Consolas'))
         self.Show(True)
         # self.CreateStatusBar()
@@ -28,17 +28,21 @@ class MoniFrame(wx.Frame):
 
         # set menu contents
         filemenu = wx.Menu()
-        menu_open = filemenu.Append(wx.ID_OPEN, "Open", " ")
-        menu_save = filemenu.Append(wx.ID_SAVE, "Save as", " ")
-        menu_font = filemenu.Append(wx.MenuItem(filemenu, id=101, text='Font', kind=wx.ITEM_NORMAL))
+        menu_open = filemenu.Append(wx.ID_OPEN, 'Open', ' ')
+        menu_save = filemenu.Append(wx.ID_SAVE, 'Save as', ' ')
         menu_clear = filemenu.Append(wx.MenuItem(filemenu, id=102, text='Clear', kind=wx.ITEM_NORMAL))
-        menu_exit = filemenu.Append(wx.ID_EXIT, "Exit", "Termanate the program")
         filemenu.AppendSeparator()
-        menu_about = filemenu.Append(wx.ID_ABOUT, "About", "")
+        menu_exit = filemenu.Append(wx.ID_EXIT, 'Exit', 'Termanate the program')
+
+        optionmenu = wx.Menu()
+        menu_font = optionmenu.Append(wx.MenuItem(optionmenu, id=101, text='Font', kind=wx.ITEM_NORMAL))
+        optionmenu.AppendSeparator()
+        menu_about = optionmenu.Append(wx.ID_ABOUT, 'About', '')
 
         # create menu bar
         menuBar = wx.MenuBar()
-        menuBar.Append(filemenu, "File")
+        menuBar.Append(filemenu, 'File')
+        menuBar.Append(optionmenu, 'option')
         self.SetMenuBar(menuBar)
         self.Show(True)
 
@@ -66,14 +70,23 @@ class MoniFrame(wx.Frame):
             self.textctrl.Clear()
 
     def on_about(self, e):
-        with wx.MessageDialog(self, ":D", "！", wx.OK) as dlg:
+        _msg = (
+            ' :D\n\n'
+            '\'+\' : added new file or folder\n'
+            '\'-\' : removed file or folder\n'
+            '\'*\' : updated file\n'
+            '\'<\' : rename from __ to something\n'
+            '\'>\' : rename from something to __\n'
+        )
+
+        with wx.MessageDialog(self, _msg, 'TIPS', wx.OK) as dlg:
             dlg.ShowModal()  # create and show the msgbox
 
     def on_exit(self, e):
         self.Close(True)
 
     def on_open(self, e):
-        with wx.FileDialog(self, "Choose a file", defaultFile=self.openfile, wildcard="*.*",
+        with wx.FileDialog(self, 'Choose a file', defaultFile=self.openfile, wildcard='*.*',
                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:  # explorer
             if dlg.ShowModal() == wx.ID_CANCEL:
                 return
@@ -92,7 +105,7 @@ class MoniFrame(wx.Frame):
             # self.textctrl.AppendText('test2')
 
     def on_save(self, e):
-        with wx.FileDialog(self, "Save as", defaultFile=self.openfile, wildcard="*.*",
+        with wx.FileDialog(self, 'Save as', defaultFile=self.openfile, wildcard='*.*',
                            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
             if dlg.ShowModal() == wx.ID_CANCEL:
                 return
@@ -104,7 +117,7 @@ class MoniFrame(wx.Frame):
             with codecs.open(self.savefile, 'w', encoding=self.ecd) as f:
                 f.write(self.textctrl.GetValue())
 
-            dlg = wx.MessageDialog(self, "Saved successfully", "", wx.OK)
+            dlg = wx.MessageDialog(self, 'Saved successfully', '', wx.OK)
             dlg.ShowModal()
             dlg.Destroy()
             self.textctrl.Clear()
