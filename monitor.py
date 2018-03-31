@@ -3,8 +3,8 @@
 import codecs
 import json
 import os
-# import sys
 import time
+import re
 from hashlib import md5
 from queue import Queue  # , Empty
 from threading import Thread
@@ -32,6 +32,7 @@ class TextDisplay(wx.Frame):
     def __init__(self, parent, title, *, size=(300, 200), encoding='utf-8', q=None):
         self.ti: TrayIcon = None  # Tray Icon
         super(TextDisplay, self).__init__(parent, title=title, size=size)
+        self.SetIcon(wx.Icon(wx.Bitmap(ICON_FILE)))
         self.openfile = os.path.join(os.getcwd(), 'log/')
         self.ecd = encoding
         self.reading_mode = True
@@ -195,23 +196,24 @@ class App(wx.App):
                 wpath = os.path.join(wpath)
             else:
                 raise FileNotFoundError
-        self.ecd = ecd
 
         _date = time.strftime('%Y%m%d')
         _path = md5(wpath.encode('utf8')).hexdigest()
-        wcode = f'{_date}_{_path}'
-        print(wpath)
-        print(wcode)
-        _file = os.path.join(os.getcwd(), 'log', wcode+'.csv')
-        if not os.path.isfile(_file):
-            with codecs.open(_file, 'w', encoding=ecd) as f:
+        self.wcode = f'{_date}_{_path}'
+        self.wpath = wpath
+        self.ecd = ecd
+        print(self.wpath)
+        print(self.wcode)
+        log_file = os.path.join(os.getcwd(), 'log', self.wcode+'.csv')
+        if not os.path.isfile(log_file):
+            with codecs.open(log_file, 'w', encoding=ecd) as f:
                 f.write(wpath + '\n')
 
         q = Queue()  # currently no use
 
         self.td = TextDisplay(None, APP_NAME, encoding=ecd, size=size)
 
-        t_moni = Thread(target=self.monitor, args=(interv, wpath, q, wcode))
+        t_moni = Thread(target=self.monitor, args=(interv, q))
         t_moni.daemon = True
         t_moni.start()
 
@@ -219,7 +221,7 @@ class App(wx.App):
 
         return True
 
-    def monitor(self, interv: int, wpath: str, out_q: Queue, wcode: str):
+    def monitor(self, interv: int, out_q: Queue):
         ACTIONS = {
             1: '+',  # create
             2: '-',  # delete
@@ -229,9 +231,9 @@ class App(wx.App):
         }
 
         FILE_LIST_DIRECTORY = 0x0001
-        print('Watching changes in', wpath)
+        print('Watching changes in', self.wpath)
         hDir = win32file.CreateFile(
-            wpath,
+            self.wpath,
             FILE_LIST_DIRECTORY,
             win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE,
             None,
@@ -256,23 +258,26 @@ class App(wx.App):
                 None
             )
             for action, filename in results:
-                time_str = time.strftime('%Y%m%d%H%M')
-                act_str = ACTIONS.get(action, '?')
-                f_str = f'{time_str},{act_str},{filename}'
 
-                if self.td.reading_mode:
-                    self.strcache += wpath + '\n'
-                    self.td.textctrl.AppendText(wpath + '\n')
-                    self.td.reading_mode = False
+                pattern = f'^(\S*)({self.wcode}.csv)$'
+                if re.match(pattern, filename) is None:  # exclude the log file being used
 
-                self.strcache += f_str + '\n'   # output
-                self.td.textctrl.AppendText(f_str + '\n')
+                    time_str = time.strftime('%Y%m%d%H%M')
+                    act_str = ACTIONS.get(action, '?')
+                    f_str = f'{time_str},{act_str},{filename}'
 
-                self.action_log(time_str, act_str, filename, wcode)
+                    if self.td.reading_mode:
+                        self.strcache += self.wpath + '\n'
+                        self.td.textctrl.AppendText(self.wpath + '\n')
+                        self.td.reading_mode = False
 
-    def action_log(self, time_str: str, act_str: str, filename: str, watch_code: str):
-        _file = os.path.join(os.getcwd(), 'log', watch_code+'.csv')
-        with codecs.open(_file, 'a', encoding=self.ecd) as f:
+                    self.strcache += f_str + '\n'   # output
+                    self.td.textctrl.AppendText(f_str + '\n')
+                    self.action_log(time_str, act_str, filename)
+
+    def action_log(self, time_str: str, act_str: str, filename: str):
+        log_file = os.path.join(os.getcwd(), 'log', self.wcode+'.csv')
+        with codecs.open(log_file, 'a', encoding=self.ecd) as f:
             f.write(f'{time_str},{act_str},{filename}\n')
 
 
