@@ -16,7 +16,7 @@ import wx.adv
 import win32file
 
 APP_NAME = 'MiNiMONi'
-ICON_FILE = os.path.join(os.getcwd(), 'icon.png')
+ICON_FILE = os.path.join(os.getcwd(), 'monitor.ico')
 MSG_ABOUT = (
     ' :D\n\n'
     '\'+\' : added new file or folder\n'
