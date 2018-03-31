@@ -3,8 +3,9 @@
 import codecs
 import json
 import os
-import time
 import re
+import time
+import traceback
 from hashlib import md5
 from queue import Queue  # , Empty
 from threading import Thread
@@ -14,9 +15,10 @@ import wx
 import wx.adv
 
 import win32file
+from icon import ei
 
 APP_NAME = 'MiNiMONi'
-ICON_FILE = os.path.join(os.getcwd(), 'monitor.ico')
+# ICON_FILE = os.path.join(os.getcwd(), 'monitor.ico')
 MSG_ABOUT = (
     ' :D\n\n'
     '\'+\' : added new file or folder\n'
@@ -29,10 +31,11 @@ MSG_ABOUT = (
 
 class TextDisplay(wx.Frame):
 
-    def __init__(self, parent, title, *, size=(300, 200), encoding='utf-8', q=None):
+    def __init__(self, parent, title, *, size=(500, 200), encoding='utf-8', q=None):
         self.ti: TrayIcon = None  # Tray Icon
         super(TextDisplay, self).__init__(parent, title=title, size=size)
-        self.SetIcon(wx.Icon(wx.Bitmap(ICON_FILE)))
+        # self.SetIcon(wx.Icon(wx.Bitmap(ICON_FILE)))
+        self.SetIcon(ei.GetIcon())
         self.openfile = os.path.join(os.getcwd(), 'log/')
         self.ecd = encoding
         self.reading_mode = True
@@ -142,6 +145,8 @@ class TextDisplay(wx.Frame):
             self.ti.Destroy()
         except AttributeError:
             pass
+        except RuntimeError:
+            pass
         self.Destroy()
 
 
@@ -150,7 +155,8 @@ class TrayIcon(wx.adv.TaskBarIcon):
     def __init__(self, td, show_balloon=False):
         self.td: TextDisplay = td  # Text Display
         super(TrayIcon, self).__init__()
-        self.SetIcon(wx.Icon(wx.Bitmap(ICON_FILE)), APP_NAME)
+        # self.SetIcon(wx.Icon(wx.Bitmap(ICON_FILE)), APP_NAME)
+        self.SetIcon(ei.GetIcon(), APP_NAME)
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self.on_restore)
         if self.td.show_balloon:
             self.ShowBalloon(':D', 'Double click the icon to restore', msec=5000)
@@ -177,25 +183,39 @@ class TrayIcon(wx.adv.TaskBarIcon):
             self.td.Destroy()
         except AttributeError:
             pass
+        except RuntimeError:
+            pass
         self.Destroy()
 
 
 class App(wx.App):
 
     def OnInit(self):
+        if not self.precheck():
+            return False
         self.strcache = ''
+        #       default setting
         current_path = os.getcwd()
-        interv, wpath = 0, current_path
-        with codecs.open(os.path.join(current_path, 'setting.json'), encoding='utf-8') as f:
-            setting = json.load(f)
-            interv = setting.get('interval', 1)  # currently no use
-            wpath = setting.get('path', current_path)
-            ecd = setting.get('encoding', 'utf-8-sig')
-            size = setting.get('frame_size', (300, 200))
-            if os.path.exists(wpath):
-                wpath = os.path.join(wpath)
-            else:
-                raise FileNotFoundError
+        interv = 0
+        wpath = current_path
+        ecd = 'utf-8'
+        size = (500, 200)
+
+        try:
+            with codecs.open(os.path.join(current_path, 'setting.json'), encoding='utf-8') as f:
+                setting = json.load(f)
+                interv = setting.get('interval', 1)  # currently no use
+                wpath = setting.get('path', current_path)
+                ecd = setting.get('encoding', 'utf-8')
+                size = setting.get('frame_size', (500, 200))
+                if os.path.exists(wpath):
+                    wpath = os.path.join(wpath)
+                else:
+                    self.warning('path cannot be found', 'WARNING')
+                    return False
+
+        except json.decoder.JSONDecodeError:
+            self.warning(traceback.format_exc(), 'WARNING: Using default setting')
 
         _date = time.strftime('%Y%m%d')
         _path = md5(wpath.encode('utf8')).hexdigest()
@@ -220,6 +240,34 @@ class App(wx.App):
         self.td.Show(True)
 
         return True
+
+    def precheck(self):
+        current_path = os.getcwd()
+        setting_path = os.path.join(current_path, 'setting.json')
+        if not os.path.exists(setting_path) or not os.path.isfile(setting_path):
+            with codecs.open(setting_path, 'w', encoding='utf-8') as f:
+                current_path = current_path.replace('\\', '/')
+                f.write(
+                    '{\n'
+                    '    \"interval\": 0,\n'
+                    f'    \"path\": \"{current_path}\",\n'
+                    '    \"encoding\": \"utf-8\",\n'
+                    '    \"frame_size\": [500, 200]\n'
+                    '}\n'
+                )
+        log_path = os.path.join(current_path, 'log')
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
+        elif os.path.isfile(log_path):
+            self.warning('Cannot make directory \"log\"')
+            return False
+        return True
+
+    def warning(self, content: str, title: str='WARNING'):
+        w = wx.Frame(None, id=-1)
+        with wx.MessageDialog(w, content, title, wx.OK) as dlg:
+            dlg.ShowModal()
+        w.Destroy()
 
     def monitor(self, interv: int, out_q: Queue):
         ACTIONS = {

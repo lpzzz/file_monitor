@@ -1,6 +1,6 @@
 {
-	"interval": 0,
-	"path": "D:/work/file_moniter",
-	"encoding": "utf-8",
-	"frame_size": [500, 200]
+    "interval": 0,
+    "path": "D:/work/file_monitor",
+    "encoding": "utf-8",
+    "frame_size": [500, 200]
 }
