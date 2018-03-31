@@ -1,5 +1,6 @@
 {
 	"interval": 0,
 	"path": "D:/work/file_moniter/test",
-	"encoding": "utf-8"
+	"encoding": "utf-8",
+	"frame_size": [500, 200]
 }
