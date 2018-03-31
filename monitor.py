@@ -1,19 +1,33 @@
 # -*- coding: utf-8 -*-
 
-from threading import Thread
-from queue import Queue   # , Empty
-from hashlib import md5
+import codecs
+import json
 import os
 # import sys
 import time
-import json
-import wx
-import codecs
-import win32file
+from hashlib import md5
+from queue import Queue  # , Empty
+from threading import Thread
+
 import win32con
+import wx
+import wx.adv
+
+import win32file
+
+APP_NAME = 'minimoni'
+ICON_FILE = os.path.join(os.getcwd(), 'icon.png')
+MSG_ABOUT = (
+    ' :D\n\n'
+    '\'+\' : added new file or folder\n'
+    '\'-\' : removed file or folder\n'
+    '\'*\' : updated file\n'
+    '\'<\' : rename from __ to something\n'
+    '\'>\' : rename from something to __\n'
+)
 
 
-class MoniFrame(wx.Frame):
+class TextDisplay(wx.Frame):
 
     def __init__(self, parent, title, ecd):
         wx.Frame.__init__(self, parent, title=title, size=(300, 200))
@@ -25,6 +39,8 @@ class MoniFrame(wx.Frame):
         self.openfile = os.path.join(os.getcwd(), 'log/')
         self.ecd = ecd
         self.reading_mode = True
+        self.about = MSG_ABOUT
+        self.ishide = False
 
         # set menu contents
         filemenu = wx.Menu()
@@ -44,15 +60,57 @@ class MoniFrame(wx.Frame):
         menuBar.Append(filemenu, 'File')
         menuBar.Append(optionmenu, 'option')
         self.SetMenuBar(menuBar)
-        self.Show(True)
 
-        # relate events to buttons
+        # bind events to buttons
         self.Bind(wx.EVT_MENU, self.on_open, menu_open)
         self.Bind(wx.EVT_MENU, self.on_save, menu_save)
         self.Bind(wx.EVT_MENU, self.on_font, menu_font)
         self.Bind(wx.EVT_MENU, self.on_clear, menu_clear)
         self.Bind(wx.EVT_MENU, self.on_exit, menu_exit)
         self.Bind(wx.EVT_MENU, self.on_about, menu_about)
+
+        # iconize and close event
+        self.Bind(wx.EVT_ICONIZE, self.on_iconize)
+        self.Bind(wx.EVT_CLOSE, self.on_exit)
+
+        # show
+        self.Show(True)
+        self.create_taskbar_icon()
+
+    def create_taskbar_icon(self):
+        self.tbi = wx.adv.TaskBarIcon()
+        self.tbi.SetIcon(wx.Icon(wx.Bitmap(ICON_FILE)), APP_NAME)
+
+        # set menu contents
+        traymenu = wx.Menu()
+        menu_restore = traymenu.Append(wx.MenuItem(traymenu, id=201, text='Restore', kind=wx.ITEM_NORMAL))
+        traymenu.AppendSeparator()
+        menu_exit = traymenu.Append(wx.ID_EXIT, 'Exit', 'Termanate the program')
+        self.traymenu = traymenu
+
+        # bind events to buttons
+        self.tbi.Bind(wx.adv.EVT_TASKBAR_RIGHT_DOWN, self.on_taskbar_right_down)
+        self.tbi.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self.on_restore)
+        self.tbi.Bind(wx.EVT_MENU, self.on_restore, menu_restore)
+        self.tbi.Bind(wx.EVT_MENU, self.on_exit, menu_exit)
+
+    # Handlers
+
+    def on_taskbar_right_down(self, e):
+        # print('!!!')
+        self.tbi.PopupMenu(self.traymenu)
+
+    def on_restore(self, e):
+        if not self.IsShown():
+            self.Iconize(False)
+            self.Show(True)
+            # print('shown')
+
+    def on_iconize(self, e):
+        if self.IsIconized():
+            if self.IsShown():
+                self.Show(False)
+                # print('hided')
 
     def on_font(self, e):
         if e.GetId() == 101:
@@ -70,20 +128,13 @@ class MoniFrame(wx.Frame):
             self.textctrl.Clear()
 
     def on_about(self, e):
-        _msg = (
-            ' :D\n\n'
-            '\'+\' : added new file or folder\n'
-            '\'-\' : removed file or folder\n'
-            '\'*\' : updated file\n'
-            '\'<\' : rename from __ to something\n'
-            '\'>\' : rename from something to __\n'
-        )
-
-        with wx.MessageDialog(self, _msg, 'TIPS', wx.OK) as dlg:
+        with wx.MessageDialog(self, self.about, 'TIPS', wx.OK) as dlg:
             dlg.ShowModal()  # create and show the msgbox
 
     def on_exit(self, e):
-        self.Close(True)
+        if 'tbi' in self.__dict__:
+            self.tbi.Destroy()
+        self.Destroy()
 
     def on_open(self, e):
         with wx.FileDialog(self, 'Choose a file', defaultFile=self.openfile, wildcard='*.*',
@@ -169,45 +220,55 @@ class MoniFrame(wx.Frame):
                     self.reading_mode = False
 
                 self.textctrl.AppendText(f_str)   # output
-                action_log(time_str, act_str, filename, self.ecd, watch_code=wcode)
+                self.action_log(time_str, act_str, filename, wcode)
+
+    def action_log(self, time_str: str, act_str: str, filename: str, watch_code: str=0):
+        _file = os.path.join(os.getcwd(), 'log', watch_code+'.csv')
+        with codecs.open(_file, 'a', encoding=self.ecd) as f:
+            f.write(f'{time_str},{act_str},{filename}\n')
 
 
-def action_log(time_str: str, act_str: str, filename: str, ecd: str, watch_code: str=0):
-    _file = os.path.join(os.getcwd(), 'log', watch_code+'.csv')
-    with codecs.open(_file, 'a', encoding=ecd) as f:
-        f.write(f'{time_str},{act_str},{filename}\n')
+class App(wx.App):
+    def OnInit(self):
+        current_path = os.getcwd()
+        interv, wpath = 0, current_path
+        with codecs.open(os.path.join(current_path, 'setting.json'), encoding='utf-8') as f:
+            setting = json.load(f)
+            interv = setting.get('interval', 1)
+            wpath = setting.get('path', current_path)
+            ecd = setting.get('encoding', 'utf-8-sig')
+            if os.path.exists(wpath):
+                wpath = os.path.join(wpath)
+            else:
+                raise FileNotFoundError
+
+        _date = time.strftime('%Y%m%d')
+        _path = md5(wpath.encode('utf8')).hexdigest()
+        wcode = f'{_date}_{_path}'
+        print(wpath)
+        print(wcode)
+        _file = os.path.join(os.getcwd(), 'log', wcode+'.csv')
+        if not os.path.isfile(_file):
+            with codecs.open(_file, 'w', encoding=ecd) as f:
+                f.write(wpath + '\n')
+
+        q = Queue()  # currently no use
+        td = TextDisplay(None, APP_NAME, ecd)
+        t_moni = Thread(target=td.monitor, args=(interv, wpath, q, wcode))
+        t_moni.daemon = True
+        t_moni.start()
+        return True
+
+
+def create_menu_item(menu, label, func):
+    item = wx.MenuItem(menu, -1, label)
+    menu.Bind(wx.EVT_MENU, func, id=item.GetId())
+    menu.AppendItem(item)
+    return item
 
 
 def controler():
-    current_path = os.getcwd()
-    interv, wpath = 0, current_path
-    with codecs.open(os.path.join(current_path, 'setting.json'), encoding='utf-8') as f:
-        setting = json.load(f)
-        interv = setting.get('interval', 1)
-        wpath = setting.get('path', current_path)
-        ecd = setting.get('encoding', 'utf-8-sig')
-        if os.path.exists(wpath):
-            wpath = os.path.join(wpath)
-        else:
-            raise FileNotFoundError
-
-    _date = time.strftime('%Y%m%d')
-    _path = md5(wpath.encode('utf8')).hexdigest()
-    wcode = f'{_date}_{_path}'
-    print(wpath)
-    print(wcode)
-    _file = os.path.join(os.getcwd(), 'log', wcode+'.csv')
-    if not os.path.isfile(_file):
-        with codecs.open(_file, 'w', encoding=ecd) as f:
-            f.write(wpath + '\n')
-
-    q = Queue()  # currently no use
-    app = wx.App(False)
-    fr = MoniFrame(None, 'MiniMoni', ecd)
-    t_moni = Thread(target=fr.monitor, args=(interv, wpath, q, wcode))
-    t_moni.daemon = True
-    t_moni.start()
-    # input()
+    app = App(False)
     app.MainLoop()
 
 
