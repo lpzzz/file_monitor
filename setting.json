@@ -1,6 +1,6 @@
 {
-    "interval": 0,
-    "path": "D:/work/file_monitor",
-    "encoding": "utf-8",
-    "frame_size": [500, 200]
+    "path_you_watch": "D:/work/file_monitor",
+    "encoding": "utf-8-sig",
+    "frame_size": [500, 200],
+    "start_to_tray": true
 }

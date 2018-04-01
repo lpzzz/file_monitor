@@ -13,11 +13,14 @@ from threading import Thread
 import win32con
 import wx
 import wx.adv
+import webbrowser
 
 import win32file
 from icon import ei
 
-APP_NAME = 'MiNiMONi'
+VER = '1.3'
+APP_NAME = 'MiniMoni'
+GITHUB = 'https://github.com/lpzzz/file_monitor/releases'
 # ICON_FILE = os.path.join(os.getcwd(), 'monitor.ico')
 MSG_ABOUT = (
     ' :D\n\n'
@@ -74,6 +77,8 @@ class TextDisplay(wx.Frame):
         item_hide = menu_preference.Append(wx.MenuItem(menu_preference, id=-1, text='Hide', kind=wx.ITEM_NORMAL))
         self.Bind(wx.EVT_MENU, self.on_hide, item_hide)
         menu_preference.AppendSeparator()
+        item_update = menu_preference.Append(wx.MenuItem(menu_preference, id=-1, text=f'ver.{VER}', kind=wx.ITEM_NORMAL))
+        self.Bind(wx.EVT_MENU, self.on_update, item_update)
         item_about = menu_preference.Append(wx.ID_ABOUT, 'About', '')
         self.Bind(wx.EVT_MENU, self.on_about, item_about)
 
@@ -140,6 +145,9 @@ class TextDisplay(wx.Frame):
         with wx.MessageDialog(self, MSG_ABOUT, 'TIPS', wx.OK) as dlg:
             dlg.ShowModal()  # create and show the msgbox
 
+    def on_update(self, e):
+        webbrowser.open(GITHUB, new=0, autoraise=True)
+
     def on_exit(self, e):
         try:
             self.ti.Destroy()
@@ -152,20 +160,25 @@ class TextDisplay(wx.Frame):
 
 class TrayIcon(wx.adv.TaskBarIcon):
 
-    def __init__(self, td, show_balloon=False):
+    def __init__(self, td, show_balloon=False, stray=False):
         self.td: TextDisplay = td  # Text Display
         super(TrayIcon, self).__init__()
         # self.SetIcon(wx.Icon(wx.Bitmap(ICON_FILE)), APP_NAME)
         self.SetIcon(ei.GetIcon(), APP_NAME)
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self.on_restore)
         if self.td.show_balloon:
-            self.ShowBalloon(':D', 'Double click the icon to restore', msec=5000)
+            _str = ''
+            if stray:
+                _str = 'MiniMoni started.\n'
+            self.ShowBalloon(':D', _str + 'Double click to restore window.', msec=5000)
             self.td.show_balloon = False
 
     def CreatePopupMenu(self):
         menu_tray = wx.Menu()
         item_restore = menu_tray.Append(wx.MenuItem(menu_tray, id=-1, text='Restore', kind=wx.ITEM_NORMAL))
         self.Bind(wx.EVT_MENU, self.on_restore, item_restore)
+        item_update = menu_tray.Append(wx.MenuItem(menu_tray, id=-1, text=f'ver.{VER}', kind=wx.ITEM_NORMAL))
+        self.Bind(wx.EVT_MENU, self.on_update, item_update)
         menu_tray.AppendSeparator()
         item_exit = menu_tray.Append(wx.ID_EXIT, 'Exit')
         self.Bind(wx.EVT_MENU, self.on_exit, item_exit)
@@ -177,6 +190,9 @@ class TrayIcon(wx.adv.TaskBarIcon):
             self.td.Iconize(False)
             self.td.Raise()
         self.Destroy()
+
+    def on_update(self, e):
+        webbrowser.open(GITHUB, new=0, autoraise=True)
 
     def on_exit(self, e):
         try:
@@ -200,14 +216,16 @@ class App(wx.App):
         wpath = current_path
         ecd = 'utf-8'
         size = (500, 200)
+        stray = True
 
         try:
             with codecs.open(os.path.join(current_path, 'setting.json'), encoding='utf-8') as f:
                 setting = json.load(f)
                 interv = setting.get('interval', 1)  # currently no use
-                wpath = setting.get('path', current_path)
-                ecd = setting.get('encoding', 'utf-8')
+                wpath = setting.get('path_you_watch', current_path)
+                ecd = setting.get('encoding', 'utf-8-sig')
                 size = setting.get('frame_size', (500, 200))
+                stray = setting.get('stay_to_tray', True)
                 if os.path.exists(wpath):
                     wpath = os.path.join(wpath)
                 else:
@@ -233,11 +251,16 @@ class App(wx.App):
 
         self.td = TextDisplay(None, APP_NAME, encoding=ecd, size=size)
 
-        t_moni = Thread(target=self.monitor, args=(interv, q))
-        t_moni.daemon = True
-        t_moni.start()
+        thread_moni = Thread(target=self.monitor, args=(interv, q))
+        thread_moni.daemon = True
+        thread_moni.start()
 
-        self.td.Show(True)
+        if stray:
+            self.td.Show(False)
+            self.td.ti = TrayIcon(self.td, stray=True)
+            stray = False
+        else:
+            self.td.Show(True)
 
         return True
 
@@ -249,10 +272,10 @@ class App(wx.App):
                 current_path = current_path.replace('\\', '/')
                 f.write(
                     '{\n'
-                    '    \"interval\": 0,\n'
-                    f'    \"path\": \"{current_path}\",\n'
-                    '    \"encoding\": \"utf-8\",\n'
-                    '    \"frame_size\": [500, 200]\n'
+                    f'    \"path_you_watch\": \"{current_path}\",\n'
+                    '    \"encoding\": \"utf-8-sig\",\n'
+                    '    \"frame_size\": [500, 200],\n'
+                    '    \"start_to_tray\": true\n'
                     '}\n'
                 )
         log_path = os.path.join(current_path, 'log')
