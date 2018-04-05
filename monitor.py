@@ -8,7 +8,7 @@ import time
 import traceback
 from hashlib import md5
 from queue import Queue  # , Empty
-from threading import Thread
+from threading import Thread, Lock
 
 import win32con
 import wx
@@ -41,7 +41,7 @@ class TextDisplay(wx.Frame):
         self.SetIcon(ei.GetIcon())
         self.openfile = os.path.join(os.getcwd(), 'log/')
         self.ecd = encoding
-        self.reading_mode = True
+        self.print_id = 0
         self.show_balloon = True
 
         self.create_menubar()
@@ -90,7 +90,7 @@ class TextDisplay(wx.Frame):
             if dlg.ShowModal() == wx.ID_CANCEL:
                 return
 
-            self.reading_mode = True
+            self.print_id = 0
             self.openname = dlg.GetFilename()
             self.opendir = dlg.GetDirectory()
             self.openfile = os.path.join(self.opendir, self.openname)
@@ -207,53 +207,62 @@ class TrayIcon(wx.adv.TaskBarIcon):
 class App(wx.App):
 
     def OnInit(self):
+        self.current_path = os.getcwd()
         if not self.precheck():
             return False
         self.strcache = ''
         #       default setting
-        current_path = os.getcwd()
         interv = 0
-        wpath = current_path
+        path_list = [self.current_path]
         ecd = 'utf-8'
         size = (500, 200)
         stray = True
 
         try:
-            with codecs.open(os.path.join(current_path, 'setting.json'), encoding='utf-8') as f:
+            with codecs.open(os.path.join(self.current_path, 'setting.json'), encoding='utf-8') as f:
                 setting = json.load(f)
                 interv = setting.get('interval', 1)  # currently no use
-                wpath = setting.get('path_you_watch', current_path)
+                path_list = setting.get('path_you_watch', self.current_path)
                 ecd = setting.get('encoding', 'utf-8-sig')
                 size = setting.get('frame_size', (500, 200))
                 stray = setting.get('stay_to_tray', True)
-                if os.path.exists(wpath):
-                    wpath = os.path.join(wpath)
-                else:
-                    self.warning('path cannot be found', 'WARNING')
-                    return False
 
         except json.decoder.JSONDecodeError:
             self.warning(traceback.format_exc(), 'WARNING: Using default setting')
 
-        _date = time.strftime('%Y%m%d')
-        _path = md5(wpath.encode('utf8')).hexdigest()
-        self.wcode = f'{_date}_{_path}'
-        self.wpath = wpath
-        self.ecd = ecd
-        print(self.wpath)
-        print(self.wcode)
-        log_file = os.path.join(os.getcwd(), 'log', self.wcode+'.csv')
-        if not os.path.isfile(log_file):
-            with codecs.open(log_file, 'w', encoding=ecd) as f:
-                f.write(wpath + '\n')
-
-        q = Queue()  # currently no use
-
         self.td = TextDisplay(None, APP_NAME, encoding=ecd, size=size)
 
-        thread_moni = Thread(target=self.monitor, args=(interv, q))
-        thread_moni.daemon = True
-        thread_moni.start()
+        for i in range(len(path_list)):
+            wpath = path_list[i]
+            _date = time.strftime('%Y%m%d')
+            _path = md5(wpath.encode('utf8')).hexdigest()
+            wcode = f'{_date}_{_path}'
+
+            if os.path.exists(wpath):
+                path_list[i] = (os.path.join(wpath), wcode)
+            else:
+                self.warning(f'path {wpath} cannot be found', 'WARNING')
+                return False
+
+            self.ecd = ecd
+            print(wpath)
+            print(wcode)
+            log_file = os.path.join(self.current_path, 'log', wcode+'.csv')
+            if not os.path.isfile(log_file):
+                with codecs.open(log_file, 'w', encoding=ecd) as f:
+                    f.write(wpath + '\n')
+
+        self.queue = Queue()  # currently no use
+        self.lock = Lock()
+
+        thread_list = list()
+        # i = 0
+        for wpath, wcode in path_list:
+            # i += 1
+            thread_moni = Thread(target=self.monitor, args=(wpath, wcode, interv))
+            thread_moni.daemon = True
+            thread_list.append(thread_moni)
+            thread_moni.start()
 
         if stray:
             self.td.Show(False)
@@ -265,20 +274,22 @@ class App(wx.App):
         return True
 
     def precheck(self):
-        current_path = os.getcwd()
-        setting_path = os.path.join(current_path, 'setting.json')
+        setting_path = os.path.join(self.current_path, 'setting.json')
         if not os.path.exists(setting_path) or not os.path.isfile(setting_path):
             with codecs.open(setting_path, 'w', encoding='utf-8') as f:
-                current_path = current_path.replace('\\', '/')
+                self.current_path = self.current_path.replace('\\', '/')
                 f.write(
                     '{\n'
-                    f'    \"path_you_watch\": \"{current_path}\",\n'
+                    '    \"path_you_watch\":\n'
+                    '    [\n'
+                    f'        \"{self.current_path}\"\n'
+                    '    ],\n'
                     '    \"encoding\": \"utf-8-sig\",\n'
                     '    \"frame_size\": [500, 200],\n'
                     '    \"start_to_tray\": true\n'
                     '}\n'
                 )
-        log_path = os.path.join(current_path, 'log')
+        log_path = os.path.join(self.current_path, 'log')
         if not os.path.exists(log_path):
             os.makedirs(log_path)
         elif os.path.isfile(log_path):
@@ -292,7 +303,7 @@ class App(wx.App):
             dlg.ShowModal()
         w.Destroy()
 
-    def monitor(self, interv: int, out_q: Queue):
+    def monitor(self, wpath: str, wcode: int, interv: int):
         ACTIONS = {
             1: '+',  # create
             2: '-',  # delete
@@ -302,9 +313,9 @@ class App(wx.App):
         }
 
         FILE_LIST_DIRECTORY = 0x0001
-        print('Watching changes in', self.wpath)
+        print('Watching changes in', wpath)
         hDir = win32file.CreateFile(
-            self.wpath,
+            wpath,
             FILE_LIST_DIRECTORY,
             win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE,
             None,
@@ -330,24 +341,26 @@ class App(wx.App):
             )
             for action, filename in results:
 
-                pattern = f'^(\S*)({self.wcode}.csv)$'
+                pattern = f'^(\S*)(.csv)$'
                 if re.match(pattern, filename) is None:  # exclude the log file being used
 
-                    time_str = time.strftime('%Y%m%d%H%M')
+                    time_str = time.strftime('%Y%m%d%H%M%S')
                     act_str = ACTIONS.get(action, '?')
                     f_str = f'{time_str},{act_str},{filename}'
 
-                    if self.td.reading_mode:
-                        self.strcache += self.wpath + '\n'
-                        self.td.textctrl.AppendText(self.wpath + '\n')
-                        self.td.reading_mode = False
-
+                    self.lock.acquire()
+                    if self.td.print_id != wcode:
+                        self.strcache += wpath + '\n'
+                        self.td.textctrl.AppendText(wpath + '\n')
+                        self.td.print_id = wcode
                     self.strcache += f_str + '\n'   # output
                     self.td.textctrl.AppendText(f_str + '\n')
-                    self.action_log(time_str, act_str, filename)
+                    self.lock.release()
 
-    def action_log(self, time_str: str, act_str: str, filename: str):
-        log_file = os.path.join(os.getcwd(), 'log', self.wcode+'.csv')
+                    self.action_log(time_str, act_str, filename, wcode)
+
+    def action_log(self, time_str: str, act_str: str, filename: str, wcode: int):
+        log_file = os.path.join(os.getcwd(), 'log', wcode+'.csv')
         with codecs.open(log_file, 'a', encoding=self.ecd) as f:
             f.write(f'{time_str},{act_str},{filename}\n')
 

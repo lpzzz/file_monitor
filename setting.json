@@ -1,5 +1,10 @@
 {
-    "path_you_watch": "D:/work/file_monitor",
+    "path_you_watch":
+    [
+        "D:/work/file_monitor",
+		"D:/work/file_monitor/test1",
+		"D:/work/file_monitor/test2"
+    ],
     "encoding": "utf-8-sig",
     "frame_size": [500, 200],
     "start_to_tray": true
