@@ -18,7 +18,7 @@ import webbrowser
 import win32file
 from icon import ei
 
-VER = '1.3'
+VER = '1.4'
 APP_NAME = 'MiniMoni'
 GITHUB = 'https://github.com/lpzzz/file_monitor/releases'
 # ICON_FILE = os.path.join(os.getcwd(), 'monitor.ico')
