@@ -1,6 +1,6 @@
 A file operations moniter running background\
 which is now called
-### **MiniMoni** 
+### **MiniMoni**
 
 4-step startup
 1. Download `MiniMoni.exe` from [`releases`](https://github.com/lpzzz/file_monitor/releases)
